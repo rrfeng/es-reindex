@@ -56,34 +56,29 @@ func main() {
 		log.Fatalln("Destnation index does not exists:", dstIndex, "\nYou should create the new index and put the mapping template first!")
 	}
 
-	var count int64 = 0
-
 	copyByType := func(hit *elastic.SearchHit, bulkService *elastic.BulkService) error {
 		source := make(map[string]interface{})
 		if err := json.Unmarshal(*hit.Source, &source); err != nil {
 			return err
 		}
-		if hit.Type == srcType {
-			req := elastic.NewBulkIndexRequest().Index(dstIndex).Type(dstType).Id(hit.Id).Doc(source)
-			bulkService.Add(req)
-			count++
-			if count%1000 == 0 {
-				log.Println("Progress:", count)
-			}
-		}
+
+		req := elastic.NewBulkIndexRequest().Index(dstIndex).Type(dstType).Id(hit.Id).Doc(source)
+		bulkService.Add(req)
 		return nil
 	}
 
-	//	showProgress := func(current, total int64) {
-	//		if current%1000 == 0 {
-	//			log.Println(current, "of", total)
-	//		}
-	//	}
+	showProgress := func(current, total int64) {
+		percent := current * 100 / total
+		if percent%10 == 0 {
+			log.Printf("Progress: %v%% of %v", percent, total)
+		}
+	}
 
-	task := elastic.NewReindexer(es, srcIndex, copyByType)
+	query := elastic.NewTermQuery("_type", srcType)
+	task := elastic.NewReindexer(es, srcIndex, copyByType).Progress(showProgress).Query(query)
 	ret, err := task.Do()
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	log.Println("Done!", ret)
+	log.Printf("Done! Success: %v, Failed: %v.", ret.Success, ret.Failed)
 }
